@@ -261,5 +261,5 @@ pyrightconfig.json
 __test.py
 configs/*
 !configs/default.yml
-logs/
+wandb/
 data/

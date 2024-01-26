@@ -6,7 +6,7 @@ from loss import NeRFLoss, mse_to_psnr
 from model import MipNeRF
 import torch
 import torch.optim as optim
-import torch.utils.tensorboard as tb
+import wandb
 from os import path
 from datasets import get_dataloader, cycle
 import numpy as np
@@ -14,8 +14,19 @@ from tqdm import tqdm
 
 
 def train_model(config):
-    model_save_path = path.join(config.log_dir, "model.pt")
-    optimizer_save_path = path.join(config.log_dir, "optim.pt")
+    
+    if config.with_wandb:
+        print("Logging to wandb")
+        run = wandb.init(
+            project="mip-nerf",
+            entity="rp-nerf",
+            config=config,
+            resume="allow",
+            save_code=True
+        )
+    else:
+        print("No logging")
+        run = wandb.init(mode="disabled")
 
     data = iter(
         cycle(
@@ -69,8 +80,7 @@ def train_model(config):
         model.parameters(), lr=config.lr_init, weight_decay=config.weight_decay
     )
     if config.continue_training:
-        model.load_state_dict(torch.load(model_save_path))
-        optimizer.load_state_dict(torch.load(optimizer_save_path))
+        raise NotImplementedError
 
     scheduler = MipLRDecay(
         optimizer,
@@ -82,8 +92,6 @@ def train_model(config):
     )
     loss_func = NeRFLoss(config.coarse_weight_decay)
     model.train()
-
-    logger = tb.SummaryWriter(config.log_dir)
 
     for step in tqdm(range(0, config.max_steps), ncols=100):
         rays, pixels = next(data)
@@ -98,17 +106,13 @@ def train_model(config):
         scheduler.step()
 
         psnr = psnr.detach().cpu().numpy()
-        logger.add_scalar(
-            "train/loss", float(loss_val.detach().cpu().numpy()), global_step=step
-        )
-        logger.add_scalar(
-            "train/coarse_psnr", float(np.mean(psnr[:-1])), global_step=step
-        )
-        logger.add_scalar("train/fine_psnr", float(psnr[-1]), global_step=step)
-        logger.add_scalar("train/avg_psnr", float(np.mean(psnr)), global_step=step)
-        logger.add_scalar(
-            "train/lr", float(scheduler.get_last_lr()[-1]), global_step=step
-        )
+        step_results = {}
+        step_results["train/loss"] = float(loss_val.detach().cpu().numpy())
+        step_results["train/coarse_psnr"] = float(np.mean(psnr[:-1]))
+        step_results["train/fine_psnr"] = float(psnr[-1])
+        step_results["train/avg_psnr"] = float(np.mean(psnr))
+        step_results["train/lr"] = float(scheduler.get_last_lr()[-1])
+        run = wandb.log(step_results, step=step)
 
         if step % config.save_every == 0:
             if eval_data:
@@ -116,19 +120,17 @@ def train_model(config):
                 del pixels
                 psnr = eval_model(config, model, eval_data)
                 psnr = psnr.detach().cpu().numpy()
-                logger.add_scalar(
-                    "eval/coarse_psnr", float(np.mean(psnr[:-1])), global_step=step
-                )
-                logger.add_scalar("eval/fine_psnr", float(psnr[-1]), global_step=step)
-                logger.add_scalar(
-                    "eval/avg_psnr", float(np.mean(psnr)), global_step=step
-                )
+                step_results = {}
+                step_results["eval/coarse_psnr"] = float(np.mean(psnr[:-1]))
+                step_results["eval/fine_psnr"] = float(psnr[-1])
+                step_results["eval/avg_psnr"] = float(np.mean(psnr))
+                run = wandb.log(step_results, step=step)
 
-            torch.save(model.state_dict(), model_save_path)
-            torch.save(optimizer.state_dict(), optimizer_save_path)
+            torch.save(model.state_dict(), os.path.join(wandb.run.dir, "model.pt"))
+            torch.save(optimizer.state_dict(), os.path.join(wandb.run.dir, "optim.pt"))
 
-    torch.save(model.state_dict(), model_save_path)
-    torch.save(optimizer.state_dict(), optimizer_save_path)
+        torch.save(model.state_dict(), os.path.join(wandb.run.dir, "model.pt"))
+        torch.save(optimizer.state_dict(), os.path.join(wandb.run.dir, "optim.pt"))
 
 
 def eval_model(config, model, data):

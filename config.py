@@ -16,6 +16,7 @@ class DatasetName:
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--with_wandb", action="store_true", default=False)
     parser.add_argument("opts", nargs=argparse.REMAINDER)
     return parser.parse_args()
 
@@ -47,7 +48,8 @@ def get_config():
     update_params(config_dict, args)
     
     # convert config_dict to config namespace
-    config = argparse.Namespace(**config_dict)        
+    config = argparse.Namespace(**config_dict)   
+    config.with_wandb = args.with_wandb     
 
     # default configs for llff, automatically set if dataset is llff and not override_defaults
     if config.dataset_name == "llff" and config.use_defaults:
@@ -67,9 +69,6 @@ def get_config():
             f"Invalid value for dataset_name {config.dataset_name}. Now support either 'llff' or 'blender'"
         )
 
-    # set device
-    # config.device = torch.device(config.device)
-
     # set base directory for dataset
     base_data_path = "data/nerf_llff_data/"
     if config.dataset_name == "blender":
@@ -77,19 +76,6 @@ def get_config():
     elif config.dataset_name == "multicam":
         base_data_path = "data/nerf_multiscale/"
     config.base_dir = os.path.join(base_data_path, config.scene)
-
-    # set log directory and create if not exist
-    config.log_dir = os.path.join(config.log_dir, config.exp_name)
-    if os.path.exists(config.log_dir) and not config.exp_name == "default":
-        raise ValueError(
-            f"Log directory {config.log_path} already exists. Please use a experiment name."
-        )
-    else:
-        os.makedirs(config.log_dir, exist_ok=True)
-    
-    # save config file
-    with open(os.path.join(config.log_dir, "config.yaml"), "w") as file:
-        yaml.dump(vars(config), file, default_flow_style=False)
     
     print()
     
