@@ -1,0 +1,55 @@
+exp_name: "default"
+
+# basic hyperparams to specify where to load/save data from/to
+log_dir: "logs"
+dataset_name: "blender"
+scene: "lego"
+use_defaults: true
+
+# model hyperparams
+use_viewdirs: false
+randomized: false
+ray_shape: "cone"
+white_bkgd: false
+num_levels: 2
+num_samples: 128
+hidden: 256
+density_noise: 0.0
+density_bias: -1.0
+rgb_padding: 0.001
+resample_padding: 0.01
+min_deg: 0
+max_deg: 16
+viewdirs_min_deg: 0
+viewdirs_max_deg: 4
+
+# loss and optimizer hyperparams
+coarse_weight_decay: 0.1
+lr_init: 0.001
+lr_final: 0.00005
+lr_delay_steps: 2500
+lr_delay_mult: 0.1
+weight_decay: 0.00001
+
+# training hyperparams
+factor: 2
+max_steps: 200000
+batch_size: 2048
+do_eval: true
+continue_training: false
+save_every: 1000
+device: "cuda"
+
+# visualization hyperparams
+chunks: 8192
+model_weight_path: "logs/model.pt"
+visualize_depth: true
+visualize_normals: true
+
+# extracting mesh hyperparams
+x_range: [-1.2, 1.2]
+y_range: [-1.2, 1.2]
+z_range: [-1.2, 1.2]
+grid_size: 256
+sigma_threshold: 50.0
+occ_threshold: 0.2

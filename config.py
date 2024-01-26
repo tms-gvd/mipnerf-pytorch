@@ -1,75 +1,96 @@
 import argparse
+import yaml
 import torch
-from os import path
+import os
+
+class DatasetName:
+    def __init__(self, name) -> None:
+        self.name = name.lower()
+    
+    def get_path(self, data_dir):
+        if self.name == "blender_lego":
+            return os.path.join(os.path.abspath(data_dir), "nerf_synthetic", "lego")
+        else:
+            raise NotImplementedError("LLFF dataset is not supported yet")
+
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("opts", nargs=argparse.REMAINDER)
+    return parser.parse_args()
+
+
+def update_params(params, args):
+    def _nested_params(params, key, value, base_key):
+        if "." in key:
+            first, rest = key.split(".", 1)
+            _nested_params(params[first], rest, value, base_key)
+        else:
+            if key not in params.keys():
+                print(f"WARNING: {base_key} is not in the config file.")
+                params[key] = value
+            else:
+                print(f"Overwriting {base_key} with {value}")
+                params[key] = type(params[key])(value)
+
+    for arg in args.opts:
+        key, value = arg.split("=")
+        _nested_params(params, key, value, key)
 
 
 def get_config():
-    config = argparse.ArgumentParser()
-
-    # basic hyperparams to specify where to load/save data from/to
-    config.add_argument("--log_dir", type=str, default="log")
-    config.add_argument("--dataset_name", type=str, default="blender")
-    config.add_argument("--scene", type=str, default="lego")
-    # model hyperparams
-    config.add_argument("--use_viewdirs", action="store_false")
-    config.add_argument("--randomized", action="store_false")
-    config.add_argument("--ray_shape", type=str, default="cone")  # should be "cylinder" if llff
-    config.add_argument("--white_bkgd", action="store_false")  # should be False if using llff
-    config.add_argument("--override_defaults", action="store_true")
-    config.add_argument("--num_levels", type=int, default=2)
-    config.add_argument("--num_samples", type=int, default=128)
-    config.add_argument("--hidden", type=int, default=256)
-    config.add_argument("--density_noise", type=float, default=0.0)
-    config.add_argument("--density_bias", type=float, default=-1.0)
-    config.add_argument("--rgb_padding", type=float, default=0.001)
-    config.add_argument("--resample_padding", type=float, default=0.01)
-    config.add_argument("--min_deg", type=int, default=0)
-    config.add_argument("--max_deg", type=int, default=16)
-    config.add_argument("--viewdirs_min_deg", type=int, default=0)
-    config.add_argument("--viewdirs_max_deg", type=int, default=4)
-    # loss and optimizer hyperparams
-    config.add_argument("--coarse_weight_decay", type=float, default=0.1)
-    config.add_argument("--lr_init", type=float, default=1e-3)
-    config.add_argument("--lr_final", type=float, default=5e-5)
-    config.add_argument("--lr_delay_steps", type=int, default=2500)
-    config.add_argument("--lr_delay_mult", type=float, default=0.1)
-    config.add_argument("--weight_decay", type=float, default=1e-5)
-    # training hyperparams
-    config.add_argument("--factor", type=int, default=2)
-    config.add_argument("--max_steps", type=int, default=200_000)
-    config.add_argument("--batch_size", type=int, default=2048)
-    config.add_argument("--do_eval", action="store_false")
-    config.add_argument("--continue_training", action="store_true")
-    config.add_argument("--save_every", type=int, default=1000)
-    config.add_argument("--device", type=str, default="cuda")
-    # visualization hyperparams
-    config.add_argument("--chunks", type=int, default=8192)
-    config.add_argument("--model_weight_path", default="log/model.pt")
-    config.add_argument("--visualize_depth", action="store_true")
-    config.add_argument("--visualize_normals", action="store_true")
-    # extracting mesh hyperparams
-    config.add_argument("--x_range", nargs="+", type=float, default=[-1.2, 1.2])
-    config.add_argument("--y_range", nargs="+", type=float, default=[-1.2, 1.2])
-    config.add_argument("--z_range", nargs="+", type=float, default=[-1.2, 1.2])
-    config.add_argument("--grid_size", type=int, default=256)
-    config.add_argument("--sigma_threshold", type=float, default=50.0)
-    config.add_argument("--occ_threshold", type=float, default=0.2)
-
-    config = config.parse_args()
+    # load config file and update parameters from command line
+    print("LOADING CONFIG FILE")
+    args = get_parser()
+    with open(args.config_path, "r") as file:
+        config_dict = yaml.safe_load(file)
+    update_params(config_dict, args)
+    
+    # convert config_dict to config namespace
+    config = argparse.Namespace(**config_dict)        
 
     # default configs for llff, automatically set if dataset is llff and not override_defaults
-    if config.dataset_name == "llff" and not config.override_defaults:
+    if config.dataset_name == "llff" and config.use_defaults:
+        print("Using default parameters for LLFF dataset")
         config.factor = 4
         config.ray_shape = "cylinder"
         config.white_bkgd = False
         config.density_noise = 1.0
+    elif config.dataset_name == "blender" and config.use_defaults:
+        print("Using default parameters for Blender dataset")
+        config.factor = 2
+        config.ray_shape = "cone"
+        config.white_bkgd = False
+        config.density_noise = 0.0
+    else:
+        raise NotImplementedError(
+            f"Invalid value for dataset_name {config.dataset_name}. Now support either 'llff' or 'blender'"
+        )
 
-    config.device = torch.device(config.device)
+    # set device
+    # config.device = torch.device(config.device)
+
+    # set base directory for dataset
     base_data_path = "data/nerf_llff_data/"
     if config.dataset_name == "blender":
         base_data_path = "data/nerf_synthetic/"
     elif config.dataset_name == "multicam":
         base_data_path = "data/nerf_multiscale/"
-    config.base_dir = path.join(base_data_path, config.scene)
+    config.base_dir = os.path.join(base_data_path, config.scene)
 
+    # set log directory and create if not exist
+    config.log_dir = os.path.join(config.log_dir, config.exp_name)
+    if os.path.exists(config.log_dir) and not config.exp_name == "default":
+        raise ValueError(
+            f"Log directory {config.log_path} already exists. Please use a experiment name."
+        )
+    else:
+        os.makedirs(config.log_dir, exist_ok=True)
+    
+    # save config file
+    with open(os.path.join(config.log_dir, "config.yaml"), "w") as file:
+        yaml.dump(vars(config), file, default_flow_style=False)
+    
+    print()
+    
     return config

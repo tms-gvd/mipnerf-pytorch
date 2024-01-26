@@ -1,0 +1,33 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "debug train.py (cuda)",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path", "configs/default.yml",
+                "batch_size=64"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "debug train.py (mps)",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path", "configs/default.yml",
+                "batch_size=64",
+                "device=mps",
+            ],
+            "justMyCode": true
+        },
+    ]
+}
